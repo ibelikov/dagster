@@ -9,6 +9,7 @@ from ..graph import GraphDefinition
 from ..hook import HookDefinition
 from ..job import JobDefinition
 from ..logger import LoggerDefinition
+from ..policy import RetryPolicy
 from ..resource import ResourceDefinition
 from ..version_strategy import VersionStrategy
 
@@ -28,6 +29,7 @@ class _Job:
         logger_defs: Optional[Dict[str, LoggerDefinition]] = None,
         executor_def: Optional["ExecutorDefinition"] = None,
         hooks: Optional[AbstractSet[HookDefinition]] = None,
+        retry_policy: Optional[RetryPolicy] = None,
         version_strategy: Optional[VersionStrategy] = None,
     ):
         self.name = name
@@ -38,6 +40,7 @@ class _Job:
         self.logger_defs = logger_defs
         self.executor_def = executor_def
         self.hooks = hooks
+        self.retry_policy = retry_policy
         self.version_strategy = version_strategy
 
     def __call__(self, fn: Callable[..., Any]) -> JobDefinition:
@@ -85,6 +88,7 @@ class _Job:
             logger_defs=self.logger_defs,
             executor_def=self.executor_def,
             hooks=self.hooks,
+            retry_policy=self.retry_policy,
             version_strategy=self.version_strategy,
         )
 
@@ -98,6 +102,7 @@ def job(
     logger_defs: Optional[Dict[str, LoggerDefinition]] = None,
     executor_def: Optional["ExecutorDefinition"] = None,
     hooks: Optional[AbstractSet[HookDefinition]] = None,
+    retry_policy: Optional[RetryPolicy] = None,
     version_strategy: Optional[VersionStrategy] = None,
 ) -> Union[_Job, JobDefinition]:
     """Creates a job with the specified parameters from the decorated graph/op invocation function.
@@ -139,6 +144,8 @@ def job(
             A dictionary of string logger identifiers to their implementations.
         executor_def (Optional[ExecutorDefinition]):
             How this Job will be executed. Defaults to :py:class:`multiprocess_executor` .
+        retry_policy (Optional[RetryPolicy]): The default retry policy for all ops in this job.
+            Only used if retry policy is not defined on the op definition or op invocation.
         version_strategy (Optional[VersionStrategy]):
             Defines how each op (and optionally, resource) in the job can be versioned. If
             provided, memoizaton will be enabled for this job.
@@ -157,5 +164,6 @@ def job(
         logger_defs=logger_defs,
         executor_def=executor_def,
         hooks=hooks,
+        retry_policy=retry_policy,
         version_strategy=version_strategy,
     )
