@@ -365,10 +365,10 @@ runLauncher:
 
       ## The image to use for the launched Job's Dagster container.
       ## The `pullPolicy` field is ignored. Use`imagePullPolicy` instead.
-      # image:
-      #   repository: ""
-      #   tag: ""
-      #   pullPolicy: Always
+      image:
+        repository: "docker.io/dagster/dagster-k8s"
+        tag: ~
+        pullPolicy: Always
 
       # The K8s namespace where new jobs will be launched.
       # By default, the release namespace is used.
