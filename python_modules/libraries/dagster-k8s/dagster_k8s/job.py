@@ -187,7 +187,7 @@ def get_job_name_from_run_id(run_id, resume_attempt_number=None):
 class DagsterK8sJobConfig(
     namedtuple(
         "_K8sJobTaskConfig",
-        "job_image dagster_home image_pull_policy image_pull_secrets service_account_name "
+        "job_image job_namespace dagster_home image_pull_policy image_pull_secrets service_account_name "
         "instance_config_map postgres_password_secret env_config_maps env_secrets env_vars "
         "volume_mounts volumes labels",
     )
@@ -226,6 +226,8 @@ class DagsterK8sJobConfig(
             Default: ``[]``. See: https://kubernetes.io/docs/tasks/inject-data-application/distribute-credentials-secure/#configure-all-key-value-pairs-in-a-secret-as-container-environment-variables
         job_image (Optional[str]): The docker image to use. The Job container will be launched with this
             image. Should not be specified if using userDeployments.
+        job_namespace (Optional[str]): The namespace where launch the Job. Defaults to the namespace
+            in config of K8sRunLauncher.
         volume_mounts (Optional[List[Permissive]]): A list of volume mounts to include in the job's
             container. Default: ``[]``. See:
             https://v1-18.docs.kubernetes.io/docs/reference/generated/kubernetes-api/v1.18/#volumemount-v1-core
@@ -238,6 +240,7 @@ class DagsterK8sJobConfig(
     def __new__(
         cls,
         job_image=None,
+        job_namespace=None,
         dagster_home=None,
         image_pull_policy=None,
         image_pull_secrets=None,
@@ -254,6 +257,7 @@ class DagsterK8sJobConfig(
         return super(DagsterK8sJobConfig, cls).__new__(
             cls,
             job_image=check.opt_str_param(job_image, "job_image"),
+            job_namespace=check.opt_str_param(job_namespace, "job_namespace"),
             dagster_home=check.opt_str_param(
                 dagster_home, "dagster_home", default=DAGSTER_HOME_DEFAULT
             ),
@@ -319,6 +323,11 @@ class DagsterK8sJobConfig(
                 description="Docker image to use for launched Jobs. If this field is empty, "
                 "the image that was used to originally load the Dagster repository will be used."
                 '(Ex: "mycompany.com/dagster-k8s-image:latest").',
+            ),
+            "job_namespace": Field(
+                Noneable(StringSource),
+                is_required=False,
+                description="(Advanced) Override the namespace where the Job is launched.",
             ),
             "image_pull_policy": Field(
                 Noneable(StringSource),
@@ -566,6 +575,8 @@ def construct_dagster_k8s_job(
     ]
 
     job_image = user_defined_k8s_config.container_config.pop("image", job_config.job_image)
+
+    job_namespace = user_defined_k8s_config.job_metadata.pop("namespace", job_config.job_namespace)
 
     user_defined_k8s_volume_mounts = user_defined_k8s_config.container_config.pop(
         "volume_mounts", []

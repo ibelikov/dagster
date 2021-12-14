@@ -234,6 +234,7 @@ class K8sRunLauncher(RunLauncher, ConfigurableClass):
         else:
             self._job_config = DagsterK8sJobConfig(
                 job_image=check.str_param(self._job_image, "job_image"),
+                job_namespace=check.str_param(self.job_namespace, "job_namespace"),
                 dagster_home=check.str_param(self.dagster_home, "dagster_home"),
                 image_pull_policy=check.str_param(self._image_pull_policy, "image_pull_policy"),
                 image_pull_secrets=check.opt_list_param(
@@ -262,6 +263,7 @@ class K8sRunLauncher(RunLauncher, ConfigurableClass):
     def _get_grpc_job_config(self, job_image):
         return DagsterK8sJobConfig(
             job_image=check.str_param(job_image, "job_image"),
+            job_namespace=check.str_param(self.job_namespace, "job_namespace"),
             dagster_home=check.str_param(self.dagster_home, "dagster_home"),
             image_pull_policy=check.str_param(self._image_pull_policy, "image_pull_policy"),
             image_pull_secrets=check.opt_list_param(
@@ -284,6 +286,12 @@ class K8sRunLauncher(RunLauncher, ConfigurableClass):
             labels=self._labels,
         )
 
+    def get_job_namespace_from_tags(self, tags):
+        user_defined_k8s_config = get_user_defined_k8s_config(frozentags(tags))
+        job_namespace = user_defined_k8s_config.job_metadata.get("namespace", self.job_namespace)
+
+        return job_namespace
+
     def _launch_k8s_job_with_args(self, job_name, args, run, pipeline_origin):
         pod_name = job_name
 
@@ -295,6 +303,8 @@ class K8sRunLauncher(RunLauncher, ConfigurableClass):
             if repository_origin.container_image
             else self.get_static_job_config()
         )
+
+        job_namespace = self.get_job_namespace_from_tags(run.tags)
 
         self._instance.add_run_tags(
             run.run_id,
@@ -319,21 +329,21 @@ class K8sRunLauncher(RunLauncher, ConfigurableClass):
             EngineEventData(
                 [
                     EventMetadataEntry.text(job_name, "Kubernetes Job name"),
-                    EventMetadataEntry.text(self.job_namespace, "Kubernetes Namespace"),
+                    EventMetadataEntry.text(job_namespace, "Kubernetes Namespace"),
                     EventMetadataEntry.text(run.run_id, "Run ID"),
                 ]
             ),
             cls=self.__class__,
         )
 
-        self._batch_api.create_namespaced_job(body=job, namespace=self.job_namespace)
+        self._batch_api.create_namespaced_job(body=job, namespace=job_namespace)
         self._instance.report_engine_event(
             "Kubernetes run worker job created",
             run,
             EngineEventData(
                 [
                     EventMetadataEntry.text(job_name, "Kubernetes Job name"),
-                    EventMetadataEntry.text(self.job_namespace, "Kubernetes Namespace"),
+                    EventMetadataEntry.text(job_namespace, "Kubernetes Namespace"),
                     EventMetadataEntry.text(run.run_id, "Run ID"),
                 ]
             ),
@@ -407,8 +417,10 @@ class K8sRunLauncher(RunLauncher, ConfigurableClass):
             run_id, resume_attempt_number=self._instance.count_resume_run_attempts(run.run_id)
         )
 
+        job_namespace = self.get_job_namespace_from_tags(run.tags)
+
         try:
-            termination_result = delete_job(job_name=job_name, namespace=self.job_namespace)
+            termination_result = delete_job(job_name=job_name, namespace=job_namespace)
             if termination_result:
                 self._instance.report_engine_event(
                     message="Run was terminated successfully.",
@@ -442,8 +454,9 @@ class K8sRunLauncher(RunLauncher, ConfigurableClass):
         job_name = get_job_name_from_run_id(
             run.run_id, resume_attempt_number=self._instance.count_resume_run_attempts(run.run_id)
         )
+        job_namespace = self.get_job_namespace_from_tags(run.tags)
         try:
-            job = self._batch_api.read_namespaced_job(namespace=self.job_namespace, name=job_name)
+            job = self._batch_api.read_namespaced_job(namespace=job_namespace, name=job_name)
         except Exception:
             return CheckRunHealthResult(
                 WorkerStatus.UNKNOWN, str(serializable_error_info_from_exc_info(sys.exc_info()))
